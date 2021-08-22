@@ -172,23 +172,24 @@ def create_groundtruth_database(kitti_root,
                     db_path = str(database_save_path.stem + "/image_2/" + filename)
                 else:
                     db_path = str("image_2/" + filepath)
+                
                 db_path_r = db_path.replace("image_2", "image_3")
 
                 point, box2d_l, box3d = encode_label(info['calib/P2'], rotys[i], dims[i], locs[i])
                 box2d_l[[0, 2]] = box2d_l[[0, 2]].clip(0, img_l.shape[1] - 1)
                 box2d_l[[1, 3]] = box2d_l[[1, 3]].clip(0, img_l.shape[0] - 1)
                 cropImg_l = img_l[int(box2d_l[1]):int(box2d_l[3]), int(box2d_l[0]):int(box2d_l[2]), :]
-                cv2.imwrite(db_path, cropImg_l)
+                cv2.imwrite(os.path.join(kitti_root, db_path), cropImg_l)
 
                 point, box2d_r, box3d = encode_label(info['calib/P3'], rotys[i], dims[i], locs[i])
                 box2d_r[[0, 2]] = box2d_r[[0, 2]].clip(0, img_r.shape[1] - 1)
                 box2d_r[[1, 3]] = box2d_r[[1, 3]].clip(0, img_r.shape[0] - 1)
                 cropImg_r = img_r[int(box2d_r[1]):int(box2d_r[3]), int(box2d_r[0]):int(box2d_r[2]), :]
-                cv2.imwrite(db_path_r, cropImg_r)
+                cv2.imwrite(os.path.join(kitti_root, db_path_r), cropImg_r)
 
                 db_info = {
                     "name": names[i],
-                    "path ": db_path,
+                    "path": db_path,
                     "box2d_l": box2d_l,
                     "box2d_r": box2d_r,
                     "alpha": alphas[i],
@@ -212,8 +213,6 @@ def create_groundtruth_database(kitti_root,
 
 if __name__ == "__main__":
     kitti_root = "datasets/kitti"
-    create_kitti_info_file(kitti_root, info_path="info_restart")
+    # create_kitti_info_file(kitti_root)
     create_groundtruth_database(
-        kitti_root, 
-        info_path="info_restart", 
-        database_save_path="gt_restart")
+        kitti_root)
