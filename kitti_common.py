@@ -122,7 +122,7 @@ def get_kitti_image_info(path,
                          label_info=True,
                          calib=False,
                          image_ids=7481,
-                         extend_matrix=False,
+                         extend_matrix=True,
                          num_worker=8,
                          relative_path=True,
                          with_imageshape=True):
