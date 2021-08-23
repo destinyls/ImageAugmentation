@@ -1,5 +1,6 @@
 import concurrent.futures as futures
 import os
+import cv2
 import pathlib
 import re
 from collections import OrderedDict
@@ -7,6 +8,45 @@ from collections import OrderedDict
 import numpy as np
 from skimage import io
 
+
+def compute_box_3d_image(P, ry, dims, locs):
+    l, h, w = dims[0], dims[1], dims[2]
+    x, y, z = locs[0], locs[1], locs[2]
+    x_corners = [l/2, l/2, -l/2, -l/2, l/2, l/2, -l/2, -l/2]
+    y_corners = [0, 0, 0, 0, -h, -h, -h, -h]
+    z_corners = [w/2, -w/2, -w/2, w/2, w/2, -w/2, -w/2, w/2]
+
+    corners_3d = np.array([x_corners, y_corners, z_corners])
+    rot_mat = np.array([[np.cos(ry), 0, np.sin(ry)],
+                        [0, 1, 0],
+                        [-np.sin(ry), 0, np.cos(ry)]])
+    corners_3d = np.matmul(rot_mat, corners_3d)
+    corners_3d += np.array([x, y, z]).reshape([3, 1])
+
+    corners_3d_extend = corners_3d.transpose(1, 0)
+    corners_3d_extend = np.concatenate(
+        [corners_3d_extend, np.ones((corners_3d_extend.shape[0], 1), dtype=np.float32)], axis=1)    
+    corners_2d = np.matmul(P, corners_3d_extend.transpose(1, 0))
+    corners_2d = corners_2d[:2] / corners_2d[2]
+
+    return corners_2d.transpose(1, 0)
+
+def draw_box_3d(image, corners, c=(0, 255, 0)):
+  face_idx = [[0,1,5,4],
+              [1,2,6,5],
+              [2,3,7,6],
+              [3,0,4,7]]
+  for ind_f in [3, 2, 1, 0]:
+    f = face_idx[ind_f]
+    for j in [0, 1, 2, 3]:
+      cv2.line(image, (int(corners[f[j], 0]), int(corners[f[j], 1])),
+               (int(corners[f[(j+1)%4], 0]), int(corners[f[(j+1)%4], 1])), c, 2, lineType=cv2.LINE_AA)
+    if ind_f == 0:
+      cv2.line(image, (int(corners[f[0], 0]), int(corners[f[0], 1])),
+               (int(corners[f[2], 0]), int(corners[f[2], 1])), c, 1, lineType=cv2.LINE_AA)
+      cv2.line(image, (int(corners[f[1], 0]), int(corners[f[1], 1])),
+               (int(corners[f[3], 0]), int(corners[f[3], 1])), c, 1, lineType=cv2.LINE_AA)
+  return image
 
 def area(boxes, add1=False):
     """Computes area of boxes.
@@ -125,7 +165,7 @@ def get_kitti_image_info(path,
                          extend_matrix=True,
                          num_worker=8,
                          relative_path=True,
-                         with_imageshape=True):
+                         with_imageshape=False):
     # image_infos = []
     root_path = pathlib.Path(path)
     if not isinstance(image_ids, list):
@@ -136,12 +176,12 @@ def get_kitti_image_info(path,
         annotations = None
         image_info['img_path'] = get_image_path(idx, path, training,
                                                 relative_path)
+        
         if with_imageshape:
             img_path = image_info['img_path']
             if relative_path:
                 img_path = str(root_path / img_path)
-            image_info['img_shape'] = np.array(
-                io.imread(img_path).shape[:2], dtype=np.int32)
+            image_info['img_shape'] = np.array(io.imread(img_path).shape[:2], dtype=np.int32)
         if label_info:
             label_path = get_label_path(idx, path, training, relative_path)
             if relative_path:
