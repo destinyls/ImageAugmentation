@@ -16,41 +16,8 @@ def _read_imageset_file(path):
         lines = f.readlines()
     return [int(line) for line in lines]
 
-def encode_label(P, ry, dims, locs):
-    l, h, w = dims[0], dims[1], dims[2]
-    x, y, z = locs[0], locs[1], locs[2]
 
-    x_corners = [0, l, l, l, l, 0, 0, 0]
-    y_corners = [0, 0, h, h, 0, 0, h, h]
-    z_corners = [0, 0, 0, w, w, w, w, 0]
-
-    x_corners += - np.float32(l) / 2
-    y_corners += - np.float32(h)
-    z_corners += - np.float32(w) / 2
-
-    corners_3d = np.array([x_corners, y_corners, z_corners])
-    rot_mat = np.array([[np.cos(ry), 0, np.sin(ry)],
-                        [0, 1, 0],
-                        [-np.sin(ry), 0, np.cos(ry)]])
-    corners_3d = np.matmul(rot_mat, corners_3d)
-    corners_3d += np.array([x, y, z]).reshape([3, 1])
-
-    loc_center = np.array([x, y - h / 2, z, 1.0])
-    proj_point = np.matmul(P, loc_center)
-    proj_point = proj_point[:2] / proj_point[2]
-
-    corners_3d_extend = corners_3d.transpose(1, 0)
-    corners_3d_extend = np.concatenate(
-        [corners_3d_extend, np.ones((corners_3d_extend.shape[0], 1), dtype=np.float32)], axis=1)    
-    corners_2d = np.matmul(P, corners_3d_extend.transpose(1, 0))
-    corners_2d = corners_2d[:2] / corners_2d[2]
-    box2d = np.array([min(corners_2d[0]), min(corners_2d[1]),
-                      max(corners_2d[0]), max(corners_2d[1])])
-
-    return proj_point, box2d, corners_3d
-
-
-def create_kitti_info_file(kitti_path,
+def create_kitti_info_file(kitti_root,
                            info_path=None,
                            create_trainval=False,
                            relative_path=True):
@@ -60,12 +27,13 @@ def create_kitti_info_file(kitti_path,
     print("Generate info. this may take several minutes.")
 
     if info_path is None:
-        info_path = pathlib.Path(kitti_path)
+        info_path = pathlib.Path(kitti_root)
     else:
         info_path = pathlib.Path(info_path)
+    info_path.mkdir(parents=True, exist_ok=True)
 
     kitti_infos_train = kitti.get_kitti_image_info(
-        kitti_path,
+        kitti_root,
         training=True,
         label_info=True,
         calib=True,
@@ -77,7 +45,7 @@ def create_kitti_info_file(kitti_path,
         pickle.dump(kitti_infos_train, f)
 
     kitti_infos_val = kitti.get_kitti_image_info(
-        kitti_path,
+        kitti_root,
         training=True,
         label_info=True,
         calib=True,
@@ -90,7 +58,7 @@ def create_kitti_info_file(kitti_path,
 
     if create_trainval:
         kitti_infos_trainval = kitti.get_kitti_image_info(
-            kitti_path,
+            kitti_root,
             training=True,
             label_info=True,
             calib=True,
@@ -124,7 +92,6 @@ def create_groundtruth_database(kitti_root,
         db_info_save_path = root_path / "kitti_dbinfos_train.pkl"
     else:
         db_info_save_path = path_info / "kitti_dbinfos_train.pkl"
-
     with open(info_save_path, 'rb') as f:
         kitti_infos = pickle.load(f)
 
@@ -138,12 +105,17 @@ def create_groundtruth_database(kitti_root,
     for info in tqdm(kitti_infos):
         image_idx = info["image_idx"]
         annos = info["annos"]
+
         names = annos["name"]
         alphas = annos["alpha"]
         rotys = annos["rotation_y"]
+        bboxes = annos["bbox"]
         locs = annos["location"]
         dims = annos["dimensions"]
         difficulty = annos["difficulty"]
+        truncated = annos["truncated"]
+        occluded = annos["occluded"]
+        scores = annos["score"]
         gt_idxes = annos["index"]
         num_obj = np.sum(annos["index"] >= 0)
 
@@ -162,28 +134,30 @@ def create_groundtruth_database(kitti_root,
             filepath = database_save_path / filename
             if names[i] in used_classes:
                 if relative_path:
-                    db_path = str(database_save_path.stem +  filename)
-                
-                point, box2d, box3d = encode_label(info['calib/P2'], rotys[i], dims[i], locs[i])
-                box2d[[0, 2]] = box2d[[0, 2]].clip(0, img.shape[1] - 1)
-                box2d[[1, 3]] = box2d[[1, 3]].clip(0, img.shape[0] - 1)
-                cropImg = img[int(box2d[1]):int(box2d[3]), int(box2d[0]):int(box2d[2]), :]
-                cv2.imwrite(os.path.join(kitti_root, db_path), cropImg)
+                    relative_filepath = os.path.join(database_save_path.stem, filename)
 
+                box2d = bboxes[i]
+                cropImg = img[int(box2d[1]):int(box2d[3]), int(box2d[0]):int(box2d[2]), :]
+                cv2.imwrite(str(filepath), cropImg)
+
+                class_to_label = kitti.get_class_to_label_map()
                 db_info = {
                     "name": names[i],
-                    "path": db_path,
+                    "label": class_to_label[names[i]],
+                    "path": relative_filepath,
                     "bbox": box2d,
                     "alpha": alphas[i],
                     "roty": rotys[i],
                     "dim": dims[i],
                     "loc": locs[i],
                     "P2": info['calib/P2'],
-                    "proj_p": point,
+                    "P3": info['calib/P3'],
                     "img_shape": img_shape,
                     "image_idx": image_idx,
                     "gt_idx": gt_idxes[i],
                     "difficulty": difficulty[i],
+                    "truncated": truncated[i],
+                    "occluded": occluded[i],
                 }
                 if "score" in annos:
                     db_info["score"] = annos["score"][i]
@@ -196,6 +170,9 @@ def create_groundtruth_database(kitti_root,
 
 if __name__ == "__main__":
     kitti_root = "datasets/kitti"
-    create_kitti_info_file(kitti_root)
-    create_groundtruth_database(
-        kitti_root)
+    # create_kitti_info_file(kitti_root, info_path="kitti_infos") 
+    # create_groundtruth_database(kitti_root, info_path="kitti_infos", database_save_path="gt_database")
+
+    create_kitti_info_file(kitti_root) 
+    create_groundtruth_database(kitti_root)
+
