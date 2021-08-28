@@ -32,6 +32,7 @@ def encode_bbox(P, ry, dims, locs, img_shape):
     corners_2d = corners_2d[:2] / corners_2d[2]
     bbox = np.array([min(corners_2d[0]), min(corners_2d[1]),
                      max(corners_2d[0]), max(corners_2d[1])])
+
     bbox[[0,2]] = np.clip(bbox[[0,2]], 0, img_shape[1])
     bbox[[1,3]] = np.clip(bbox[[1,3]], 0, img_shape[0])
     return bbox
@@ -41,14 +42,14 @@ def _read_imageset_file(path):
         lines = f.readlines()
     return [int(line) for line in lines]
 
-
 def create_kitti_info_file(kitti_root,
                            info_path=None,
-                           create_trainval=False,
+                           create_trainval=True,
                            relative_path=True):
     train_img_ids = _read_imageset_file("datasets/kitti/ImageSets/train.txt")
     val_img_ids = _read_imageset_file("datasets/kitti/ImageSets/val.txt")
     trainval_img_ids = _read_imageset_file("datasets/kitti/ImageSets/trainval.txt")
+    test_img_ids = _read_imageset_file("datasets/kitti/ImageSets/test.txt")
     print("Generate info. this may take several minutes.")
 
     if info_path is None:
@@ -94,6 +95,17 @@ def create_kitti_info_file(kitti_root,
         with open(filename, 'wb') as f:
             pickle.dump(kitti_infos_trainval, f)
 
+    kitti_infos_test = kitti.get_kitti_image_info(
+        kitti_root,
+        training=False,
+        label_info=True,
+        calib=True,
+        image_ids=test_img_ids,
+        relative_path=relative_path)
+    filename = info_path / 'kitti_infos_test.pkl'
+    print(f"Kitti info val file is saved to {filename}")
+    with open(filename, 'wb') as f:
+        pickle.dump(kitti_infos_test, f)
 
 def create_groundtruth_database(kitti_root,
                                 info_path=None,
@@ -102,11 +114,11 @@ def create_groundtruth_database(kitti_root,
                                 relative_path=True):
     root_path = pathlib.Path(kitti_root)
     if info_path is None:
-        info_save_path = root_path / 'kitti_infos_train.pkl'
+        info_save_path = root_path / 'kitti_infos_test.pkl'
     else:
         path_info = pathlib.Path(info_path)
         path_info.mkdir(parents=True, exist_ok=True)
-        info_save_path = path_info / 'kitti_infos_train.pkl'
+        info_save_path = path_info / 'kitti_infos_test.pkl'
     if database_save_path is None:
         database_save_path = root_path / 'gt_database'
     else:
@@ -114,9 +126,9 @@ def create_groundtruth_database(kitti_root,
     database_save_path.mkdir(parents=True, exist_ok=True)
 
     if info_path is None:
-        db_info_save_path = root_path / "kitti_dbinfos_train.pkl"
+        db_info_save_path = root_path / "kitti_dbinfos_test.pkl"
     else:
-        db_info_save_path = path_info / "kitti_dbinfos_train.pkl"
+        db_info_save_path = path_info / "kitti_dbinfos_test.pkl"
     with open(info_save_path, 'rb') as f:
         kitti_infos = pickle.load(f)
 
@@ -126,7 +138,6 @@ def create_groundtruth_database(kitti_root,
         used_classes.pop(used_classes.index('DontCare'))
     for name in used_classes:
         all_db_infos[name] = {}
-    group_counter = 0
     for info in tqdm(kitti_infos):
         image_idx = info["image_idx"]
         annos = info["annos"]
@@ -134,7 +145,6 @@ def create_groundtruth_database(kitti_root,
         names = annos["name"]
         alphas = annos["alpha"]
         rotys = annos["rotation_y"]
-        bboxes = annos["bbox"]
         locs = annos["location"]
         dims = annos["dimensions"]
         difficulty = annos["difficulty"]
@@ -148,8 +158,11 @@ def create_groundtruth_database(kitti_root,
         img_path_l = os.path.join(root_path, img_path)
         img_path_r = img_path_l.replace("image_2", "image_3")
 
+        if not os.path.exists(img_path_l):
+            continue
         img_l = cv2.imread(img_path_l)
         img_r = cv2.imread(img_path_r)
+
         if np.all(img_l == img_r):
             print("shape not consistence ...")        
         img_shape = img_l.shape
@@ -157,6 +170,9 @@ def create_groundtruth_database(kitti_root,
 
         for i in range(num_obj):
             if difficulty[i] == -1:
+                continue
+            # print(scores[i])
+            if scores[i] < 0.65:
                 continue
             if img_shape_key not in all_db_infos[names[i]].keys():
                 all_db_infos[names[i]][img_shape_key] = []
@@ -174,6 +190,11 @@ def create_groundtruth_database(kitti_root,
                 cropImg_r = img_r[int(box2d_r[1]):int(box2d_r[3]), int(box2d_r[0]):int(box2d_r[2]), :]
                 filepath_l = str(filepath)
                 filepath_r = filepath_l.replace("image_2", "image_3")
+
+                if np.min(cropImg_l.shape) == 0 or np.min(cropImg_r.shape) == 0:
+                    continue
+                if np.max(cropImg_l.shape) > 1000 or np.max(cropImg_r.shape) > 1000:
+                    continue
 
                 cv2.imwrite(filepath_l, cropImg_l)
                 cv2.imwrite(filepath_r, cropImg_r)
@@ -209,9 +230,9 @@ def create_groundtruth_database(kitti_root,
 
 if __name__ == "__main__":
     kitti_root = "datasets/kitti"
-    create_kitti_info_file(kitti_root, info_path="kitti_infos") 
+    # create_kitti_info_file(kitti_root, info_path="kitti_infos") 
     create_groundtruth_database(kitti_root, info_path="kitti_infos", database_save_path="gt_database")
 
-    #create_kitti_info_file(kitti_root) 
-    #create_groundtruth_database(kitti_root)
+    # create_kitti_info_file(kitti_root) 
+    # create_groundtruth_database(kitti_root)
 

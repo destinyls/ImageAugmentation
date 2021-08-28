@@ -1,1 +1,5 @@
 datasets/
+gt_database/
+kitti_infos/
+
+__pycache__/
