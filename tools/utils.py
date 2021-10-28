@@ -26,15 +26,12 @@ def draw_3d_box_on_image(image, label_2_file, P2, c=(255, 0, 0)):
           image = draw_box_3d(image, box_2d, c=c)
     return image
 
-def draw_box_on_bev_image(bev_image, points_filter, label_2_file, cam_to_vel, c=(0, 255, 0)):
+def draw_box_on_bev_image_v2(bev_image, points_filter, label_2_file, cam_to_vel, c=(0, 255, 0)):
     with open(label_2_file) as f:
       for line in f.readlines():
           line_list = line.split('\n')[0].split(' ')
           object_type = line_list[0]
           occluded = line_list[2]
-
-          print(object_type)
-
           if object_type != "Car":
               continue
 

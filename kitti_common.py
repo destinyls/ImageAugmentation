@@ -165,7 +165,7 @@ def get_kitti_image_info(path,
                          extend_matrix=True,
                          num_worker=8,
                          relative_path=True,
-                         with_imageshape=False):
+                         with_imageshape=True):
     # image_infos = []
     root_path = pathlib.Path(path)
     if not isinstance(image_ids, list):
@@ -186,6 +186,8 @@ def get_kitti_image_info(path,
             label_path = get_label_path(idx, path, training, relative_path)
             if relative_path:
                 label_path = str(root_path / label_path)
+            
+            label_path = os.path.join("fusion_results", "{:06d}".format(idx) + ".txt")
             annotations = get_label_anno(label_path)
         if calib:
             calib_path = get_calib_path(
@@ -628,10 +630,17 @@ def get_label_anno(label_path):
         [[float(info) for info in x[11:14]] for x in content]).reshape(-1, 3)
     annotations['rotation_y'] = np.array(
         [float(x[14]) for x in content]).reshape(-1)
-    if len(content) != 0 and len(content[0]) == 16:  # have score
+
+    if len(content) != 0 and len(content[0]) == 18 :  # have geo_conf and iou_3d
         annotations['score'] = np.array([float(x[15]) for x in content])
+        annotations['geo_conf'] = np.array([float(x[16]) for x in content])
+        annotations['iou_3d'] = np.array([float(x[17]) for x in content])
+
     else:
         annotations['score'] = np.zeros((annotations['bbox'].shape[0], ))
+        annotations['geo_conf'] = np.zeros((annotations['bbox'].shape[0], ))
+        annotations['iou_3d'] = np.zeros((annotations['bbox'].shape[0], ))
+    
     index = list(range(num_objects)) + [-1] * (num_gt - num_objects)
     annotations['index'] = np.array(index, dtype=np.int32)
     annotations['group_ids'] = np.arange(num_gt, dtype=np.int32)

@@ -1,5 +1,9 @@
 datasets/
 gt_database/
 kitti_infos/
+gt_database*
 
 __pycache__/
+
+*.jpg
+*.png
