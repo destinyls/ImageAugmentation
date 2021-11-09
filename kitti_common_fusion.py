@@ -186,6 +186,7 @@ def get_kitti_image_info(path,
             label_path = get_label_path(idx, path, training, relative_path)
             if relative_path:
                 label_path = str(root_path / label_path)
+            label_path = os.path.join("fusion_results", "{:06d}".format(idx) + ".txt")
             annotations = get_label_anno(label_path)
         if calib:
             calib_path = get_calib_path(

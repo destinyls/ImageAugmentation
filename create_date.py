@@ -84,7 +84,7 @@ def create_kitti_info_file(kitti_root,
                            create_trainval=True,
                            relative_path=True):
     print(kitti_root)
-    train_img_ids = _read_imageset_file(kitti_root, "ImageSets/train.txt")
+    train_img_ids = _read_imageset_file(kitti_root, "ImageSets/train_9472.txt")
     val_img_ids = _read_imageset_file(kitti_root, "ImageSets/val.txt")
     trainval_img_ids = _read_imageset_file(kitti_root, "ImageSets/trainval.txt")
     test_img_ids = _read_imageset_file(kitti_root, "ImageSets/test.txt")
@@ -95,7 +95,7 @@ def create_kitti_info_file(kitti_root,
     else:
         info_path = pathlib.Path(info_path)
     info_path.mkdir(parents=True, exist_ok=True)
-    '''
+    
     kitti_infos_train = kitti.get_kitti_image_info(
         kitti_root,
         training=True,
@@ -103,12 +103,11 @@ def create_kitti_info_file(kitti_root,
         calib=True,
         image_ids=train_img_ids,
         relative_path=relative_path)
-    filename = info_path / 'kitti_infos_train.pkl'
+    filename = info_path / 'kitti_infos_trainval_9472.pkl'
     print(f"Kitti info train file is saved to {filename}")
     with open(filename, 'wb') as f:
         pickle.dump(kitti_infos_train, f)
     '''
-
     kitti_infos_val = kitti.get_kitti_image_info(
         kitti_root,
         training=True,
@@ -121,7 +120,6 @@ def create_kitti_info_file(kitti_root,
     with open(filename, 'wb') as f:
         pickle.dump(kitti_infos_val, f)
 
-    '''
     if create_trainval:
         kitti_infos_trainval = kitti.get_kitti_image_info(
             kitti_root,
@@ -134,7 +132,7 @@ def create_kitti_info_file(kitti_root,
         print(f"Kitti info trainval file is saved to {filename}")
         with open(filename, 'wb') as f:
             pickle.dump(kitti_infos_trainval, f)
-
+    
     kitti_infos_test = kitti.get_kitti_image_info(
         kitti_root,
         training=False,
@@ -142,7 +140,7 @@ def create_kitti_info_file(kitti_root,
         calib=True,
         image_ids=test_img_ids,
         relative_path=relative_path)
-    filename = info_path / 'kitti_infos_test_uncertainty.pkl'
+    filename = info_path / 'kitti_infos_test_uncertainty_17.91_trainval_stage_002.pkl'
     print(f"Kitti info val file is saved to {filename}")
     with open(filename, 'wb') as f:
         pickle.dump(kitti_infos_test, f)
@@ -155,31 +153,31 @@ def create_groundtruth_database(kitti_root,
                                 relative_path=True):
     root_path = pathlib.Path(kitti_root)
     if info_path is None:
-        info_save_path = root_path / 'kitti_infos_test_uncertainty.pkl'
+        info_save_path = root_path / 'kitti_infos_test_uncertainty_17.91_trainval_stage_002.pkl'
     else:
         path_info = pathlib.Path(info_path)
         path_info.mkdir(parents=True, exist_ok=True)
-        info_save_path = path_info / 'kitti_infos_test_uncertainty.pkl'
+        info_save_path = path_info / 'kitti_infos_test_uncertainty_17.91_trainval_stage_002.pkl'
     if database_save_path is None:
-        database_save_path = root_path / 'gt_database_uncertainty'
+        database_save_path = root_path / 'gt_database_uncertainty_17.91_trainval_stage_002'
     else:
         database_save_path = pathlib.Path(database_save_path)
     database_save_path.mkdir(parents=True, exist_ok=True)
 
     if info_path is None:
-        db_info_save_path = root_path / "kitti_dbinfos_test_uncertainty.pkl"
+        db_info_save_path = root_path / "kitti_dbinfos_test_uncertainty_17.91_trainval_stage_002.pkl"
     else:
-        db_info_save_path = path_info / "kitti_dbinfos_test_uncertainty.pkl"
+        db_info_save_path = path_info / "kitti_dbinfos_test_uncertainty_17.91_trainval_stage_002.pkl"
     with open(info_save_path, 'rb') as f:
         kitti_infos = pickle.load(f)
 
-    all_db_infos = {"flipped": {}, "origin": {}}
+    all_db_infos = {}
     if used_classes is None:
         used_classes = list(kitti.get_classes())
         used_classes.pop(used_classes.index('DontCare'))
     for name in used_classes:
-        all_db_infos["origin"][name] = {}
-        all_db_infos["flipped"][name] = {}
+        all_db_infos[name] = {}
+        all_db_infos[name] = {}
 
     for idx in tqdm(range(len(kitti_infos))):
         info = kitti_infos[idx]
@@ -204,9 +202,6 @@ def create_groundtruth_database(kitti_root,
         if num_obj == 0:
             continue
         img_l = cv2.imread(img_path_l)
-        img_r = cv2.imread(img_path_r)
-        img_l_flipped = cv2.flip(img_l, 1)
-
         img_shape = img_l.shape
         img_shape_key = f"{img_shape[0]}_{img_shape[1]}"
 
@@ -217,23 +212,28 @@ def create_groundtruth_database(kitti_root,
                 continue
             if scores[i] < 0.45:
                 continue
-            
             box2d_l = encode_bbox(info['calib/P2'], rotys[i], dimensions[i], locations[i], img_shape)
-            box2d_r = encode_bbox(info['calib/P3'], rotys[i], dimensions[i], locations[i], img_shape)
             cropImg_l = img_l[int(box2d_l[1]):int(box2d_l[3]), int(box2d_l[0]):int(box2d_l[2]), :]
-            cropImg_r = img_r[int(box2d_r[1]):int(box2d_r[3]), int(box2d_r[0]):int(box2d_r[2]), :]
-            
             filename_key = f"{image_idx}_{names[i]}_{gt_idxes[i]}_{difficulty[i]}"
             folder_l = os.path.join(database_save_path, "image_2")
-            folder_r = os.path.join(database_save_path, "image_3")
             if not os.path.exists(folder_l):
                 os.makedirs(folder_l)
-            if not os.path.exists(folder_r):
-                os.makedirs(folder_r)
             filepath_l = os.path.join(folder_l, filename_key + ".jpg")
-            filepath_r = os.path.join(folder_r, filename_key + ".jpg")
+            if cropImg_l.shape[0] == 0 or cropImg_l.shape[1] == 0:
+                continue
             cv2.imwrite(filepath_l, cropImg_l)
-            cv2.imwrite(filepath_r, cropImg_r)
+            
+            if os.path.exists(img_path_r):
+                img_r = cv2.imread(img_path_r)
+                box2d_r = encode_bbox(info['calib/P3'], rotys[i], dimensions[i], locations[i], img_shape)
+                cropImg_r = img_r[int(box2d_r[1]):int(box2d_r[3]), int(box2d_r[0]):int(box2d_r[2]), :]
+                folder_r = os.path.join(database_save_path, "image_3")
+                if not os.path.exists(folder_r):
+                    os.makedirs(folder_r)
+                filepath_r = os.path.join(folder_r, filename_key + ".jpg")
+                if cropImg_r.shape[0] == 0 or cropImg_r.shape[1] == 0:
+                    continue
+                cv2.imwrite(filepath_r, cropImg_r)
 
             sample_info = {
                 "filename_key": filename_key,
@@ -261,62 +261,11 @@ def create_groundtruth_database(kitti_root,
                 sample_info["score"] = annos["score"][i]
             if "geo_conf" in annos:
                 sample_info["geo_conf"] = annos["geo_conf"][i]
-            if img_shape_key not in all_db_infos["origin"][names[i]]:
-                all_db_infos["origin"][names[i]][img_shape_key] = []
-            all_db_infos["origin"][names[i]][img_shape_key].append(sample_info)
+            if img_shape_key not in all_db_infos[names[i]]:
+                all_db_infos[names[i]][img_shape_key] = []
+            all_db_infos[names[i]][img_shape_key].append(sample_info)
 
-            # flipped patch image
-            P2 = info['calib/P2'].copy()
-            P2[0, 2] = img_shape[1] - P2[0, 2] - 1
-            dim = dimensions[i]
-            loc = locations[i].copy()
-            loc[0] *= -1
-            roty = (-math.pi - rotys[i]) if rotys[i] < 0 else (math.pi - rotys[i])
-            while roty > math.pi: roty -= math.pi * 2
-            while roty < (-math.pi): roty += math.pi * 2
-            alpha = convertRot2Alpha(roty, loc[2], loc[0])
-
-            box2d_l = encode_bbox(P2, roty, dim, loc, img_shape)
-            cropImg_l = img_l_flipped[int(box2d_l[1]):int(box2d_l[3]), int(box2d_l[0]):int(box2d_l[2]), :]
-            folder_l = os.path.join(database_save_path, "flipped")
-            if not os.path.exists(folder_l):
-                os.makedirs(folder_l)
-            filepath_l = os.path.join(folder_l, filename_key + ".jpg")
-            cv2.imwrite(filepath_l, cropImg_l)
-            
-            sample_info = {
-                "filename_key": filename_key,
-                "name": names[i],
-                "label": TYPE_ID_CONVERSION[names[i]],
-                "bbox_l": box2d_l,
-                "alpha": alpha,
-                "roty": roty,
-                "dim": dim,
-                "loc": loc,
-                "P2": P2,
-                "img_shape": img_shape,
-                "image_idx": image_idx,
-                "gt_idx": gt_idxes[i],
-                "difficulty": difficulty[i],
-                "truncated": truncated[i],
-                "occluded": occluded[i],
-                "filepath_l": filepath_l,
-                "score": 1.0
-            }
-            if "score" in annos:
-                sample_info["score"] = annos["score"][i]
-            if "geo_conf" in annos:
-                sample_info["geo_conf"] = annos["geo_conf"][i]
-            if img_shape_key not in all_db_infos["flipped"][names[i]]:
-                all_db_infos["flipped"][names[i]][img_shape_key] = []
-            all_db_infos["flipped"][names[i]][img_shape_key].append(sample_info)
-            # img_l_flipped = visualization(img_l_flipped, sample_info)
-        '''
-        image_file = os.path.join("debug", str(image_idx) + ".jpg") 
-        cv2.imwrite(image_file, img_l_flipped)
-        '''
-
-    for class_key, class_db_infos in all_db_infos["origin"].items():
+    for class_key, class_db_infos in all_db_infos.items():
         for k, v in class_db_infos.items():
             print(f"load {len(v)} {k}_{class_key} database infos")
     with open(db_info_save_path, 'wb') as f:
@@ -325,7 +274,7 @@ def create_groundtruth_database(kitti_root,
 if __name__ == "__main__":
     kitti_root = "datasets/kitti"
     create_kitti_info_file(kitti_root, info_path="kitti_infos") 
-    # create_groundtruth_database(kitti_root, info_path="kitti_infos", database_save_path="gt_database_uncertainty")
+    # create_groundtruth_database(kitti_root, info_path="kitti_infos", database_save_path="gt_database_uncertainty_17.91_trainval_stage_002")
 
     # create_kitti_info_file(kitti_root) 
     # create_groundtruth_database(kitti_root)

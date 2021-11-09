@@ -68,18 +68,14 @@ def kitti_format_check(kitti_root, pred_path, save_path):
     origin_bev_image = np.rot90(origin_bev_image)
     origin_bev_image = np.rot90(origin_bev_image)
     '''
-
     origin_image = image[:, :int(width), :]
     origin_bev_image = origin_bev_image[:, :int(width), :]
-
-
 
     print(origin_image.shape)
     print(origin_bev_image.shape)
     
     origin_total_image = np.hstack([origin_image, origin_bev_image[:-1,...]])
     cv2.imwrite(os.path.join(save_path, str(image_ids[i]) + ".jpg"), origin_total_image)
-
 
 def main():
   parser = argparse.ArgumentParser(description="Dataset in KITTI format Checking ...")

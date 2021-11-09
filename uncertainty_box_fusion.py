@@ -1,10 +1,11 @@
 import os
 import csv
 import pickle
+import warnings
 import cv2
 import torch
 import numpy as np
-import kitti_common as kitti
+import kitti_common_fusion as kitti
 
 from numba import jit
 from tqdm import tqdm
@@ -105,6 +106,7 @@ class UncertaintyBoxFusion():
         self.split_path = "training" if self.split in ["train", "val", "trainval"] else "testing"
         self.model_list = model_list
         self.iou_calculator = BboxOverlaps3D(coordinate="camera")
+        self.has_gts = False if self.split == "test" else True
         
         if self.split == "val":
             imageset_txt = os.path.join(root, "ImageSets", "val.txt")
@@ -193,6 +195,7 @@ class UncertaintyBoxFusion():
             total_boxes_list.append(frame_boxes)
             total_scores_list.append(frame_scores)
             total_labels_list.append(frame_labels)
+            print(model_name, len(frame_boxes))
         return total_boxes_list, total_scores_list, total_labels_list, P2, image_idx
 
     def find_matching_box(self, boxes_list, new_box, match_iou):
@@ -305,7 +308,7 @@ class UncertaintyBoxFusion():
             tempalte_ious_3d[:bbox_ious_3d.shape[0], :bbox_ious_3d.shape[1]] = bbox_ious_3d
         else:
             tempalte_ious_3d = bbox_ious_3d[:tempalte_ious_3d.shape[0], :tempalte_ious_3d.shape[1]]
-        matrix_w[range(matrix_w.shape[0]), range(matrix_w.shape[1])] = 0
+        matrix_w[range(matrix_w.shape[0]), range(matrix_w.shape[1])] = 1.0
         weighted_ious_3d = tempalte_ious_3d * matrix_w
         geo_conf = np.sum(weighted_ious_3d) / (np.sum(matrix_w) + 10e-6)
 
@@ -330,10 +333,10 @@ class UncertaintyBoxFusion():
             box[-3] = np.array(conf_list).max()
         elif conf_type in ['box_and_model_avg', 'absent_model_aware_avg']:
             box[-3] = conf / len(boxes)
+        
         box[-2] = w
         box[-1] = -1 # model index field is retained for consistensy but is not used.
-
-        box[:-3] = boxes[0][:-3]
+        box[:-2] = boxes[0][:-2]
         if box[10] < 4.2:
             box[-2] = max(0.85, box[-2])
         else:
@@ -448,39 +451,27 @@ class UncertaintyBoxFusion():
             class_boxes_3d[class_key] = boxes_3d[class_indices[class_key], :]
         return class_boxes_3d
 
-        
     def __getitem__(self, idx):
         predict_txt = self.label_files[idx]
-        '''
-        if predict_txt != "001120.txt":
-            return None, None, None, None, None, None
-        '''
         boxes_list, scores_list, labels_list, P2, image_idx = self.prepare_boxes(idx)
-        boxes, scores, labels, overall_new_boxes = self.boxes_cluster(boxes_list, scores_list, labels_list, iou_thr=0.70, skip_box_thr=0.25)
-        class_boxes_3d = self.load_gt_boxes(image_idx)
-
-        for i in range(boxes.shape[0]):
-            name = ID_TYPE_CONVERSION[boxes[i, 0]]
-            loc = boxes[i, 8:11]
-            dim = boxes[i, 11:14]
-            roty = boxes[i, 14]
-            '''
-            box_bev = np.array([loc[0], loc[2], dim[2], dim[1], roty])
-            box_bev = box_bev[np.newaxis, ...]
-            gt_bboxes_bev = class_boxes_3d[name][:, [0,2,5,4,6]]
-            overlap_part = bev_box_overlap(gt_bboxes_bev, box_bev).astype(np.float64)
-            iou_bev = 0.0
-            if len(overlap_part) > 0:
-                iou_bev = np.max(overlap_part)
-            '''
-            box_3d = np.array([loc[0], loc[1], loc[2], dim[2], dim[0], dim[1], roty])
-            box_3d = box_3d[np.newaxis, ...]
-            gt_bboxes_3d = class_boxes_3d[name][:, [0,1,2,5,3,4,6]]
-            overlap_part = d3_box_overlap(gt_bboxes_3d, box_3d).astype(np.float64)
-            iou_3d = 0.0
-            if len(overlap_part) > 0:
-                iou_3d = np.max(overlap_part)
-            boxes[i, -1] = iou_3d
+        boxes, scores, labels, overall_new_boxes = self.boxes_cluster(boxes_list, scores_list, labels_list, iou_thr=0.70, skip_box_thr=0.0)
+        
+        if self.has_gts:
+            class_boxes_3d = self.load_gt_boxes(image_idx)
+            for i in range(boxes.shape[0]):
+                name = ID_TYPE_CONVERSION[boxes[i, 0]]
+                loc = boxes[i, 8:11]
+                dim = boxes[i, 11:14]
+                roty = boxes[i, 14]
+                
+                box_3d = np.array([loc[0], loc[1], loc[2], dim[2], dim[0], dim[1], roty])
+                box_3d = box_3d[np.newaxis, ...]
+                gt_bboxes_3d = class_boxes_3d[name][:, [0,1,2,5,3,4,6]]
+                overlap_part = d3_box_overlap(gt_bboxes_3d, box_3d).astype(np.float64)
+                iou_3d = 0.0
+                if len(overlap_part) > 0:
+                    iou_3d = np.max(overlap_part)
+                boxes[i, -1] = iou_3d
         
         return boxes, scores, labels, predict_txt, P2, overall_new_boxes
 
@@ -498,7 +489,7 @@ if __name__ == "__main__":
                  "MonoFlex/output/DLA-34_Baseline_MergeHead_SCH2_4_GPUS_001nd/kitti_train/inference_46400/data/", \
                  "MonoFlex_Backup/output/DLA-34_Baseline_001/kitti_train/inference_37584/data/", \
                  "MonoFlex_Backup/output/DLA-34_Baseline_005/kitti_train/inference_38976/data/"]
-    '''
+
     model_list =["MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_002nd/kitti_train/inference_40832/data/", \
                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_002nd/kitti_train/inference_43616/data/", \
                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_DIFFICULTY_1_003nd/kitti_train/inference_43152/data/", \
@@ -506,14 +497,14 @@ if __name__ == "__main__":
                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_003nd/kitti_train/inference_41760/data/", \
                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_004nd/kitti_train/inference_42688/data/", \
                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_FLIP_001nd/kitti_train/inference_38512/data/", \
-                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_FLIP_006nd/kitti_train/inference_39440/data/", \
-                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_001nd/kitti_train/inference_40832/data/", \
-                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_002nd/kitti_train/inference_45936/data/", \
-                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_003nd/kitti_train/inference_43152/data/", \
-                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_004nd/kitti_train/inference_39904/data/", \
-                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_005nd/kitti_train/inference_43152/data/", \
-                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_006nd/kitti_train/inference_41296/data/"]
-    '''
+                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_FLIP_006nd/kitti_train/inference_39440/data/",]
+    
+    model_list =["MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_004nd/kitti_train/inference_77184/data/",\
+                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_003nd/kitti_train/inference_80400/data/", \
+                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_DB_TRAIN_002nd/kitti_train/inference_82008/data/", \
+                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_DB_TRAIN_003nd/kitti_train/inference_77194/data/", \
+                 "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_DB_TRAIN_004nd/kitti_train/inference_67536_/data/"]
+    
     model_list =["MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_001nd/kitti_train/inference_40832/data/", \
                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_002nd/kitti_train/inference_45936/data/", \
                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_003nd/kitti_train/inference_43152/data/", \
@@ -534,15 +525,44 @@ if __name__ == "__main__":
                   "TRAIN_NOISE_NO_RIGHT_004nd/inference/kitti_test/data", \
                   "TRAIN_NOISE_NO_RIGHT_FLIP_001nd/inference/kitti_test/data", \
                   "TRAIN_NOISE_NO_RIGHT_FLIP_006nd/inference/kitti_test/data"]
+                  
+    # state 2:
+    model_list = ["MonoFlex/checkpoints/STAGE_59953_002/MORE_BACKGROUND_003nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_59953_002/MORE_BACKGROUND_004nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_59953_002/MORE_BACKGROUND_DB_TRAIN_002nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_59953_002/MORE_BACKGROUND_DB_TRAIN_003nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_59953_002/MORE_BACKGROUND_DB_TRAIN_004nd/inference/kitti_test/data"]
+
+    # stage 3 | test
+    model_list = ["MonoFlex/checkpoints/STAGE_003/MORE_BACKGROUND_STAGE_002_003nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_003/MORE_BACKGROUND_STAGE_002_005nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_003/MORE_BACKGROUND_STAGE_002_011nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_003/MORE_BACKGROUND_STAGE_002_012nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/STAGE_003/MORE_BACKGROUND_STAGE_002_017nd/inference/kitti_test/data"
+                ]
+    
+    # stage 3 | val
+    model_list = ["MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_STAGE_002_003nd/kitti_train/inference_69144/data", \
+                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_STAGE_002_005nd/kitti_train/inference_67536/data",\
+                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_STAGE_002_011nd/kitti_train/inference_77184/data",\
+                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_STAGE_002_012nd/kitti_train/inference_77988/data",\
+                  "MonoFlex/checkpoints/DLA-34_BCP_TRAIN_MULTI_CLASSES_PSEUDO_LABELS_FROM_TRAIN_NOISE_NO_RIGHT_UNCERTAINTY_FLIP_MORE_BACKGROUND_STAGE_002_017nd/kitti_train/inference_73164/data"
+                  ]
     '''
+    # GUP NET TEST
+    model_list = ["MonoFlex/checkpoints/MONOFLEX_TEST_17.91_STAGE_002/Trainval_labels_12000+_On_Trainval_001nd/inference/kitti_test/data", \
+                  "MonoFlex/checkpoints/MONOFLEX_TEST_17.91_STAGE_002/TEST_UNION_001nd/inference/kitti_test/data"
+                 ]
+
+    model_list = ["/root/SMOKE/checkpoints/RESNET-34_WEIGHTED_LOSS_RIGHT_IMAGE_ROI_BCP_AUG_RAW_DATA_R40_001nd/inference/kitti_train/data"]
+
     if not os.path.exists(fusion_dir):
         os.makedirs(fusion_dir)
 
     box_fusion = UncertaintyBoxFusion(root, pred_dir, split='val', model_list=model_list)
+
     for idx in tqdm(range(len(box_fusion))):
         boxes, scores, labels, predict_txt, P2, overall_new_boxes = box_fusion[idx]
-        if boxes is None:
-            continue
         boxes[:,[4,6]] *= 1280.0
         boxes[:,[5,7]] *= 384.0
 
@@ -564,7 +584,6 @@ if __name__ == "__main__":
     with open(filename, 'wb') as f:
         pickle.dump(kitti_infos_val, f)
 
-    '''
     gt_label_path = "datasets/kitti/training/label_2/"
     imageset_txt = "datasets/kitti/ImageSets/val.txt"
     result, ret_dict = evaluate_python(label_path=gt_label_path, 
@@ -573,4 +592,4 @@ if __name__ == "__main__":
                                         current_class=["Car",],
                                         metric='R11')
     print(result)
-    '''
+    

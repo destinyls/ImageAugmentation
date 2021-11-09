@@ -327,9 +327,10 @@ def get_label_anno(label_path):
         [float(x[14]) for x in content]).reshape(-1)
     if len(content) != 0 and len(content[0]) == 16:  # have score
         annotations['score'] = np.array([float(x[15]) for x in content])
-    elif len(content) != 0 and len(content[0]) == 17:  # have geo_conf
+    elif len(content) != 0 and len(content[0]) == 18:  # have geo_conf
         annotations['score'] = np.array([float(x[15]) for x in content])
         annotations['geo_conf'] = np.array([float(x[16]) for x in content])
+        annotations['iou_3d'] = np.array([float(x[17]) for x in content])
     else:
         annotations['score'] = np.zeros([len(annotations['bbox'])])
 

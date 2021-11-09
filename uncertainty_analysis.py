@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from evaluation.kitti_object_eval_python.eval import bev_box_overlap, d3_box_overlap
-from mmdet3d.core.bbox.iou_calculators.iou3d_calculator import BboxOverlaps3D
 
 from tools.visualizer.kitti_utils import *
 
@@ -53,23 +52,30 @@ def prepare_boxes(annos, used_classes = ["Car", "Pedestrian", "Cyclist"]):
     return class_boxes_3d
 
 def plot_scatter_diagram(total_frame_samples):
-    plt.xlabel('geo_conf/score')
-    plt.ylabel('iou_3d')
-    plt.xlim(xmax=1.0, xmin=0)
+    plt.xlabel('Classification Score', fontsize=24)
+    plt.ylabel('IoU3D', fontsize=24)
+    plt.tick_params(labelsize=22)
+    plt.xlim(xmax=1.0, xmin=0.25)
     plt.ylim(ymax=1.0, ymin=0)
+
+
     colors_1 = '#DC143C'
-    colors_2 = '#BDEE3C'
+    colors_2 = '#00CED1'
     area = np.pi * 1**2
     count = 0
     for frame_samples in tqdm(total_frame_samples):
         for sample in frame_samples:
-            plt.scatter(sample["score"], sample["iou_3d"], s=area, marker='+', c=colors_1, alpha=0.4, label='score')
-            plt.scatter(sample["geo_conf"], sample["iou_3d"], s=area, marker='o', c=colors_2, alpha=0.4, label='geo_conf')
+            if sample["geo_conf"] == 0.05:
+                continue
+            if sample["score"] < 0.05:
+                continue
+            #plt.scatter(1 - sample["geo_conf"], sample["iou_3d"], s=area, marker='+', c=colors_1, alpha=0.4, label='score')
+            plt.scatter(sample["score"], sample["iou_3d"], s=area, marker='o', c=colors_2, alpha=0.4, label='geo_conf')
             # plt.text(sample["score"], sample["iou_3d"], count, color='r', ha='center', va='bottom')
             # plt.text(sample["geo_conf"], sample["iou_3d"], count, color='b', ha='center', va='bottom')
             count += 1
     print("sample count: ", count)
-    plt.savefig("scatter_diagram_geo_conf_0.25.png", dpi=1500)
+    plt.savefig("scatter_diagram_score_smoke.png", dpi=150, bbox_inches="tight")
 
 def visualization(image_idx, frame_samples):
     kitti_root = "/root/Dataset/kitti"
@@ -120,7 +126,6 @@ def visualization(image_idx, frame_samples):
 if __name__ == "__main__":
     gt_info_path = "kitti_infos/kitti_infos_val.pkl"
     pred_info_path = "kitti_infos/kitti_infos_val_uncertainty.pkl"
-    iou_calculator = BboxOverlaps3D(coordinate="camera")
 
     with open(gt_info_path, 'rb') as f:
         kitti_gt_infos = pickle.load(f)
@@ -150,24 +155,17 @@ if __name__ == "__main__":
             loc = pred_annos["location"][i]
             dim = pred_annos["dimensions"][i]
             roty = pred_annos["rotation_y"][i]
-            box3d = np.array([loc[0], loc[1], loc[2], dim[0], dim[1], dim[2], roty])
-            box3d = box3d[np.newaxis, ...]
-            gt_bboxes = class_boxes_3d[name]
-            gt_bboxes_tensor = torch.tensor(gt_bboxes)
-            box3d_tensor = torch.tensor(box3d)
-            ious_3d = iou_calculator(gt_bboxes_tensor, box3d_tensor, "iou").numpy() 
-            iou_3d = 0.0
-            if len(ious_3d) > 0:
-                iou_3d = np.max(ious_3d)
-            '''
+
             box_3d = np.array([loc[0], loc[1], loc[2], dim[0], dim[1], dim[2], roty])
             box_3d = box_3d[np.newaxis, ...]
+            if name not in used_classes:
+                continue
             gt_bboxes_3d = class_boxes_3d[name]
             overlap_part = d3_box_overlap(gt_bboxes_3d, box_3d).astype(np.float64)
-            iou_3d_1 = 0.0
+            iou_3d = 0.0
             if len(overlap_part) > 0:
-                iou_3d_1 = np.max(overlap_part)
-            '''
+                iou_3d = np.max(overlap_part)
+            
             sample_info = {
                 "name": names[i],
                 "label": TYPE_ID_CONVERSION[names[i]],
@@ -189,7 +187,7 @@ if __name__ == "__main__":
         total_frame_samples.append(frame_samples)
 
     print("total num: ", count, total_ious_3d / count)
-    #plot_scatter_diagram(total_frame_samples)
+    plot_scatter_diagram(total_frame_samples)
     score_list, geo_conf_list, fusion_list = [], [], []
     for frame_samples in tqdm(total_frame_samples):
         for sample in frame_samples:
@@ -231,31 +229,33 @@ if __name__ == "__main__":
     
     fig = plt.figure()
     intervals = np.array(range(len(score_means)))
-    total_width, n = 0.9, 3
+    total_width, n = 0.8, 2
     width = total_width / n
-    x1 = intervals - width
-    x2 = intervals
-    x3 = intervals + width
-    print(score_means, sum(score_means[-3:])/3)
-    print(geo_conf_means, sum(geo_conf_means[-3:])/3)
-    print(fusion_means, sum(fusion_means[-3:])/3)
+    x1 = intervals - 0.5 * width
+    x2 = intervals + 0.5 * width
+    x3 = intervals + 0.5 * width
+    print("mean: ", score_means, sum(score_means[-3:])/3)
+    print("mean: ", geo_conf_means, sum(geo_conf_means[-3:])/3)
+    print("mean: ", fusion_means, sum(fusion_means[-3:])/3)
 
-    print(score_variances, sum(score_variances[-3:])/3)
-    print(geo_conf_variances, sum(geo_conf_variances[-3:])/3)
-    print(fusion_variances, sum(fusion_variances[-3:])/3)
+    print("variance: ", score_variances, sum(score_variances[-3:])/3)
+    print("variance: ", geo_conf_variances, sum(geo_conf_variances[-3:])/3)
+    print("variance: ", fusion_variances, sum(fusion_variances[-3:])/3)
 
-    plt.bar(x1, score_means, 0.3, color="green")
-    plt.bar(x2, geo_conf_means, 0.3, color="blue")
-    plt.bar(x3, fusion_means, 0.3, color="red")
+    plt.bar(x1, score_means, 0.4, color="wheat")
+    plt.bar(x2, fusion_means, 0.4, color="teal")
+    #plt.bar(x3, fusion_means, 0.3, color="red")
 
     '''
     for iv1, iv2, score_iou, geo_conf_iou in zip(x1, x2, score_list, geo_conf_list):
         plt.text(iv1, score_iou + 0.05, score_iou, ha='center',va='bottom')
         plt.text(iv2, geo_conf_iou + 0.05, geo_conf_iou, ha='center',va='bottom')
     '''
-    plt.xlabel("score")
-    plt.ylabel("iou_3d")
-    plt.savefig("bar_diagram_bev_3.0.jpg", dpi=500)
+
+    plt.tick_params(labelsize=12)
+    plt.xlabel("Top", fontsize=15)
+    plt.ylabel("IoU_3D", fontsize=15)
+    plt.savefig("bar_diagram_bev_3.0.png", dpi=500)
 
 
 
