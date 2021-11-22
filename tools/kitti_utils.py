@@ -348,11 +348,19 @@ class PointCloudFilter(object):
         anno_ipm[img == 255] = [0, 0, 255]
         return anno_ipm
 
-    def get_bev_image(self, velodyne_path, R0_rect, Tr_velo_to_cam, P2, img_shape):
+    def get_bev_image_bk(self, velodyne_path, R0_rect, Tr_velo_to_cam, P2, img_shape):
         if not os.path.exists(velodyne_path):
             raise ValueError(velodyne_path, "not Found")
         filtered_points = self.read_bin(velodyne_path)
         filtered_points = box_np_ops.remove_outside_points(filtered_points, R0_rect, Tr_velo_to_cam, P2, img_shape)
+        bev_image = self.pcl_2_bev(filtered_points)
+        bev_image = cv2.merge([bev_image, bev_image, bev_image])
+        return bev_image
+
+    def get_bev_image(self, velodyne_path):
+        if not os.path.exists(velodyne_path):
+            raise ValueError(velodyne_path, "not Found")
+        filtered_points = self.read_bin(velodyne_path)
         bev_image = self.pcl_2_bev(filtered_points)
         bev_image = cv2.merge([bev_image, bev_image, bev_image])
         return bev_image

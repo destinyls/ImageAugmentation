@@ -83,8 +83,7 @@ def create_kitti_info_file(kitti_root,
                            info_path=None,
                            create_trainval=True,
                            relative_path=True):
-    print(kitti_root)
-    train_img_ids = _read_imageset_file(kitti_root, "ImageSets/train_9472.txt")
+    train_img_ids = _read_imageset_file(kitti_root, "ImageSets/train.txt")
     val_img_ids = _read_imageset_file(kitti_root, "ImageSets/val.txt")
     trainval_img_ids = _read_imageset_file(kitti_root, "ImageSets/trainval.txt")
     test_img_ids = _read_imageset_file(kitti_root, "ImageSets/test.txt")
@@ -103,11 +102,11 @@ def create_kitti_info_file(kitti_root,
         calib=True,
         image_ids=train_img_ids,
         relative_path=relative_path)
-    filename = info_path / 'kitti_infos_trainval_9472.pkl'
+    filename = info_path / 'kitti_infos_backgrounds_6568.pkl'
     print(f"Kitti info train file is saved to {filename}")
     with open(filename, 'wb') as f:
         pickle.dump(kitti_infos_train, f)
-    '''
+    
     kitti_infos_val = kitti.get_kitti_image_info(
         kitti_root,
         training=True,
@@ -140,11 +139,10 @@ def create_kitti_info_file(kitti_root,
         calib=True,
         image_ids=test_img_ids,
         relative_path=relative_path)
-    filename = info_path / 'kitti_infos_test_uncertainty_17.91_trainval_stage_002.pkl'
+    filename = info_path / 'kitti_infos_test_gupnet_leaderboard_stage_000.pkl'
     print(f"Kitti info val file is saved to {filename}")
     with open(filename, 'wb') as f:
         pickle.dump(kitti_infos_test, f)
-    '''
 
 def create_groundtruth_database(kitti_root,
                                 info_path=None,
@@ -153,21 +151,21 @@ def create_groundtruth_database(kitti_root,
                                 relative_path=True):
     root_path = pathlib.Path(kitti_root)
     if info_path is None:
-        info_save_path = root_path / 'kitti_infos_test_uncertainty_17.91_trainval_stage_002.pkl'
+        info_save_path = root_path / 'kitti_infos_test_gupnet_leaderboard_stage_000.pkl'
     else:
         path_info = pathlib.Path(info_path)
         path_info.mkdir(parents=True, exist_ok=True)
-        info_save_path = path_info / 'kitti_infos_test_uncertainty_17.91_trainval_stage_002.pkl'
+        info_save_path = path_info / 'kitti_infos_test_gupnet_leaderboard_stage_000.pkl'
     if database_save_path is None:
-        database_save_path = root_path / 'gt_database_uncertainty_17.91_trainval_stage_002'
+        database_save_path = root_path / 'gt_database_gupnet_leaderboard_stage_000'
     else:
         database_save_path = pathlib.Path(database_save_path)
     database_save_path.mkdir(parents=True, exist_ok=True)
 
     if info_path is None:
-        db_info_save_path = root_path / "kitti_dbinfos_test_uncertainty_17.91_trainval_stage_002.pkl"
+        db_info_save_path = root_path / "kitti_dbinfos_test_gupnet_leaderboard_stage_000.pkl"
     else:
-        db_info_save_path = path_info / "kitti_dbinfos_test_uncertainty_17.91_trainval_stage_002.pkl"
+        db_info_save_path = path_info / "kitti_dbinfos_test_gupnet_leaderboard_stage_000.pkl"
     with open(info_save_path, 'rb') as f:
         kitti_infos = pickle.load(f)
 
@@ -273,8 +271,8 @@ def create_groundtruth_database(kitti_root,
 
 if __name__ == "__main__":
     kitti_root = "datasets/kitti"
-    create_kitti_info_file(kitti_root, info_path="kitti_infos") 
-    # create_groundtruth_database(kitti_root, info_path="kitti_infos", database_save_path="gt_database_uncertainty_17.91_trainval_stage_002")
+    # create_kitti_info_file(kitti_root, info_path="kitti_infos") 
+    # create_groundtruth_database(kitti_root, info_path="kitti_infos", database_save_path="gt_database_gupnet_leaderboard_stage_000")
 
-    # create_kitti_info_file(kitti_root) 
+    create_kitti_info_file(kitti_root) 
     # create_groundtruth_database(kitti_root)

@@ -633,12 +633,15 @@ def get_label_anno(label_path):
         annotations['score'] = np.array([float(x[15]) for x in content])
         annotations['geo_conf'] = np.array([float(x[16]) for x in content])
         annotations['iou_3d'] = np.array([float(x[17]) for x in content])
-
+    elif len(content) != 0 and len(content[0]) == 16 :  # have score
+        annotations['score'] = np.array([float(x[15]) for x in content])
+        annotations['geo_conf'] = np.ones((annotations['bbox'].shape[0], ))
+        annotations['iou_3d'] = np.zeros((annotations['bbox'].shape[0], ))
     else:
         annotations['score'] = np.zeros((annotations['bbox'].shape[0], ))
         annotations['geo_conf'] = np.zeros((annotations['bbox'].shape[0], ))
         annotations['iou_3d'] = np.zeros((annotations['bbox'].shape[0], ))
-    
+
     index = list(range(num_objects)) + [-1] * (num_gt - num_objects)
     annotations['index'] = np.array(index, dtype=np.int32)
     annotations['group_ids'] = np.arange(num_gt, dtype=np.int32)

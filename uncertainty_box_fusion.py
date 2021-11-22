@@ -195,7 +195,7 @@ class UncertaintyBoxFusion():
             total_boxes_list.append(frame_boxes)
             total_scores_list.append(frame_scores)
             total_labels_list.append(frame_labels)
-            print(model_name, len(frame_boxes))
+            # print(model_name, len(frame_boxes))
         return total_boxes_list, total_scores_list, total_labels_list, P2, image_idx
 
     def find_matching_box(self, boxes_list, new_box, match_iou):
@@ -550,16 +550,16 @@ if __name__ == "__main__":
                   ]
     '''
     # GUP NET TEST
-    model_list = ["MonoFlex/checkpoints/MONOFLEX_TEST_17.91_STAGE_002/Trainval_labels_12000+_On_Trainval_001nd/inference/kitti_test/data", \
-                  "MonoFlex/checkpoints/MONOFLEX_TEST_17.91_STAGE_002/TEST_UNION_001nd/inference/kitti_test/data"
+    model_list = ["GUPNet/code/checkpoints/RAW_DATA_48666_PREDS/MIX_TEACHING_SRAGE_001_001nd/data/", \
+                  "GUPNet/code/checkpoints/RAW_DATA_48666_PREDS/MIX_TEACHING_SRAGE_001_002nd/data/", \
+                  "GUPNet/code/checkpoints/RAW_DATA_48666_PREDS/MIX_TEACHING_SRAGE_001_003nd/data/", \
+                  "GUPNet/code/checkpoints/RAW_DATA_48666_PREDS/MIX_TEACHING_SRAGE_001_007nd/data/" \
                  ]
-
-    model_list = ["/root/SMOKE/checkpoints/RESNET-34_WEIGHTED_LOSS_RIGHT_IMAGE_ROI_BCP_AUG_RAW_DATA_R40_001nd/inference/kitti_train/data"]
 
     if not os.path.exists(fusion_dir):
         os.makedirs(fusion_dir)
 
-    box_fusion = UncertaintyBoxFusion(root, pred_dir, split='val', model_list=model_list)
+    box_fusion = UncertaintyBoxFusion(root, pred_dir, split='test', model_list=model_list)
 
     for idx in tqdm(range(len(box_fusion))):
         boxes, scores, labels, predict_txt, P2, overall_new_boxes = box_fusion[idx]
@@ -567,10 +567,10 @@ if __name__ == "__main__":
         boxes[:,[5,7]] *= 384.0
 
         generate_kitti_3d_detection(boxes, os.path.join(fusion_dir, predict_txt), P2)
-        '''
+        
         image = box_fusion.visualize_labels(fusion_dir, predict_txt, overall_new_boxes)
         cv2.imwrite(os.path.join("debug", predict_txt.replace("txt", "jpg")), image)
-        '''
+        
     val_img_ids = _read_imageset_file(root, "ImageSets/val.txt")
     kitti_infos_val = kitti.get_kitti_image_info(
         root,

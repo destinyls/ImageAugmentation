@@ -1,10 +1,7 @@
 import argparse
 import os
-import time
-import csv
 import cv2
 import numpy as np
-from PIL import Image
 
 from visualizer.kitti_utils import *
 from visualizer.utils import (
