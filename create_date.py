@@ -84,7 +84,7 @@ def create_kitti_info_file(kitti_root,
                            create_trainval=True,
                            relative_path=True):
     print(kitti_root)
-    train_img_ids = _read_imageset_file(kitti_root, "ImageSets/train_9472.txt")
+    train_img_ids = _read_imageset_file(kitti_root, "ImageSets/train_10272.txt")
     val_img_ids = _read_imageset_file(kitti_root, "ImageSets/val.txt")
     trainval_img_ids = _read_imageset_file(kitti_root, "ImageSets/trainval.txt")
     test_img_ids = _read_imageset_file(kitti_root, "ImageSets/test.txt")
@@ -103,7 +103,7 @@ def create_kitti_info_file(kitti_root,
         calib=True,
         image_ids=train_img_ids,
         relative_path=relative_path)
-    filename = info_path / 'kitti_infos_trainval_9472.pkl'
+    filename = info_path / 'kitti_infos_train_10272.pkl'
     print(f"Kitti info train file is saved to {filename}")
     with open(filename, 'wb') as f:
         pickle.dump(kitti_infos_train, f)
@@ -273,7 +273,7 @@ def create_groundtruth_database(kitti_root,
 
 if __name__ == "__main__":
     kitti_root = "datasets/kitti"
-    create_kitti_info_file(kitti_root, info_path="kitti_infos") 
+    create_kitti_info_file(kitti_root) 
     # create_groundtruth_database(kitti_root, info_path="kitti_infos", database_save_path="gt_database_uncertainty_17.91_trainval_stage_002")
 
     # create_kitti_info_file(kitti_root) 

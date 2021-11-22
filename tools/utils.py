@@ -12,29 +12,26 @@ def draw_3d_box_on_image(image, label_2_file, P2, c=(255, 0, 0)):
     with open(label_2_file) as f:
       for line in f.readlines():
           line_list = line.split('\n')[0].split(' ')
-          object_type = line_list[0]
-
-          if object_type != "Car":
+          if len(line_list) < 14:
               continue
-          occluded = line_list[2]
+          if line_list[0] not in ["Pedestrian", "Cyclist", "Car"]:
+              continue
           dim = np.array(line_list[8:11]).astype(float)
           location = np.array(line_list[11:14]).astype(float)
           rotation_y = float(line_list[14])
           box_3d = compute_box_3d_camera(dim, location, rotation_y)
           box_2d = project_to_image(box_3d, P2)
-          color = color_list[int(occluded)]
           image = draw_box_3d(image, box_2d, c=c)
     return image
 
-def draw_box_on_bev_image_v2(bev_image, points_filter, label_2_file, cam_to_vel, c=(0, 255, 0)):
+def draw_box_on_bev_image(bev_image, points_filter, label_2_file, cam_to_vel, c=(0, 255, 0)):
     with open(label_2_file) as f:
       for line in f.readlines():
           line_list = line.split('\n')[0].split(' ')
-          object_type = line_list[0]
-          occluded = line_list[2]
-          if object_type != "Car":
+          if len(line_list) < 15:
               continue
-
+          if line_list[0] not in ["Pedestrian", "Cyclist", "Car"]:
+              continue
           dimensions = np.array(line_list[8:11]).astype(float)
           location = np.array(line_list[11:14]).astype(float)
           rotation_y = float(line_list[14])
@@ -56,16 +53,13 @@ def load_intrinsic(calib_file):
     with open(os.path.join(calib_file), 'r') as csv_file:
         reader = csv.reader(csv_file, delimiter=' ')
         for line, row in enumerate(reader):
-            if row[0] == 'P_rect_02:':
-                P2 = row[1:]
-                P2 = [float(i) for i in P2]
-                P2 = np.array(P2, dtype=np.float32).reshape(3, 4)
-            if row[0] == 'P_rect_03:':
-                P3 = row[1:]
-                P3 = [float(i) for i in P3]
-                P3 = np.array(P3, dtype=np.float32).reshape(3, 4)
+            if row[0] == 'P2:':
+                K = row[1:]
+                K = [float(i) for i in K]
+                K = np.array(K, dtype=np.float32).reshape(3, 4)
+                K3 = K[:3, :3]
                 break
-    return P3, P2
+    return K3, K
 
 def load_pcd_data(pcd_file):
     pts = []
@@ -130,16 +124,51 @@ def draw_box_3d(image, corners, c=(0, 255, 0)):
               [1,2,6,5],
               [2,3,7,6],
               [3,0,4,7]]
+  points = []
   for ind_f in [3, 2, 1, 0]:
     f = face_idx[ind_f]
     for j in [0, 1, 2, 3]:
       cv2.line(image, (int(corners[f[j], 0]), int(corners[f[j], 1])),
                (int(corners[f[(j+1)%4], 0]), int(corners[f[(j+1)%4], 1])), c, 2, lineType=cv2.LINE_AA)
+      if [int(corners[f[j], 0]), int(corners[f[j], 1])] not in points:
+        points.append([int(corners[f[j], 0]), int(corners[f[j], 1])])
+      if [int(corners[f[(j+1)%4], 0]), int(corners[f[(j+1)%4], 1])] not in points:
+        points.append([int(corners[f[(j+1)%4], 0]), int(corners[f[(j+1)%4], 1])])
+
     if ind_f == 0:
       cv2.line(image, (int(corners[f[0], 0]), int(corners[f[0], 1])),
                (int(corners[f[2], 0]), int(corners[f[2], 1])), c, 1, lineType=cv2.LINE_AA)
       cv2.line(image, (int(corners[f[1], 0]), int(corners[f[1], 1])),
                (int(corners[f[3], 0]), int(corners[f[3], 1])), c, 1, lineType=cv2.LINE_AA)
+  
+  if len(points) == 8:
+    points_1 = points[:4]
+    points_2 = [points[7], points[6], points[4], points[5]]
+    points_3 = [points[0], points[3], points[5], points[4]]
+    points_4 = [points[1], points[2], points[7], points[6]]
+    points_5 = [points[2], points[3], points[5], points[7]]
+    points_6 = [points[1], points[0], points[4], points[6]]
+
+    points_1 = np.array([points_1])
+    points_2 = np.array([points_2])
+    points_3 = np.array([points_3])
+    points_4 = np.array([points_4])
+    points_5 = np.array([points_5])
+    points_6 = np.array([points_6])
+    
+    zeros = np.zeros((image.shape), dtype=np.uint8)
+    if c == (0, 255, 0):
+      c = (128, 205, 67)
+    elif c == (255, 0, 0):
+      c = (237, 149, 100)
+    mask = cv2.fillPoly(zeros, points_1, color=c)
+    mask = cv2.fillPoly(mask, points_2, color=c)
+    mask = cv2.fillPoly(mask, points_3, color=c)
+    mask = cv2.fillPoly(mask, points_4, color=c)
+    mask = cv2.fillPoly(mask, points_5, color=c)
+    mask = cv2.fillPoly(mask, points_6, color=c)
+
+    image = 0.3 * mask + image
   return image
 
 # return whether one lidar point valid

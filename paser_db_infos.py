@@ -1,5 +1,7 @@
 import pickle
 import os 
+import cv2
+import random
 import numpy as np
 
 from shutil import copyfile
@@ -32,33 +34,57 @@ def _read_imageset_file(kitti_root, path):
     return img_ids
 
 if __name__ == "__main__":
-    db_infos_path = "kitti_infos/kitti_dbinfos_test_uncertainty_stage_003.pkl"
+    db_infos_path = "datasets/kitti/kitti_dbinfos_test_uncertainty_59953_stage_003.pkl"
     # db_infos = "kitti_infos/kitti_dbinfos_test_31552_006nd.pkl"
-    infos_path = "kitti_infos/kitti_infos_train_enhanced.pkl"
+    infos_path = "datasets/kitti/kitti_infos_train_enhanced.pkl"
+    save_db_infos_path = "datasets/kitti/kitti_dbinfos_test_uncertainty_59953_stage_003_half_samples_dense.pkl"
     with open(db_infos_path, 'rb') as f:
         kitti_db_infos = pickle.load(f)
     with open(infos_path, 'rb') as f:
         infos = pickle.load(f)
         print("total: ", len(infos))
-    for idx in range(len(infos)):
-        image_idx = infos[idx]["image_idx"]
     
-    score_count = 0
-    geo_count = 0
-    print(kitti_db_infos["Car"].keys())
-    for img_shape, shape_dbinfos in kitti_db_infos["Car"].items():
-        for ins_idx in range(len(shape_dbinfos)):
-            ins = shape_dbinfos[ins_idx]
-            if ins["score"] > 0.75:
-                score_count = score_count + 1
-            if ins["score"] > 0.70 and ins["difficulty"] == 0:
-                if ins["geo_conf"] > 0.80:
-                    geo_count = geo_count + 1
-            
-        print(img_shape, "score_count: ", score_count, "total", len(shape_dbinfos))
-        print(img_shape, "geo_count: ", geo_count, "total", len(shape_dbinfos))
+    img_shape_dict = {}
+    for idx in range(len(infos)):
+        info = infos[idx]
+        img_shape = info["img_shape"]
+        img_shape_key = f"{img_shape[0]}_{img_shape[1]}"
+        if img_shape_key not in img_shape_dict:
+            img_shape_dict[img_shape_key] = 1
+        else:
+            img_shape_dict[img_shape_key] += 1
 
+    for img_shape_key, number in img_shape_dict.items():
+        print(img_shape_key, number)
+
+    print(kitti_db_infos["Car"].keys())
+    sub_db_infos = dict()
+    total_valid_ins = 0
+    total_ins = 0
+    print(kitti_db_infos.keys())
+    for class_name, class_db_infos in kitti_db_infos.items():
+        if class_name not in sub_db_infos:
+            sub_db_infos[class_name] = {}
+        for img_shape, shape_dbinfos in class_db_infos.items():
+            if img_shape not in sub_db_infos[class_name]:
+                sub_db_infos[class_name][img_shape] = []
+            geo_count = 0
+            for ins_idx in range(len(shape_dbinfos)):
+                ins = shape_dbinfos[ins_idx]                    
+                if ins["difficulty"] == 0:
+                    if ins["score"] > 0.55:
+                        if ins["geo_conf"] > 0.60:
+                            if random.random() < 1.5:
+                                sub_db_infos[class_name][img_shape].append(ins)
+                                geo_count = geo_count + 1
+            total_valid_ins += geo_count
+            total_ins += len(shape_dbinfos)
+            print(class_name, img_shape, "geo_count: ", geo_count, "total", len(shape_dbinfos))
+    print("toyal_ins num: ", total_valid_ins, total_ins)
 '''
+    with open(save_db_infos_path, 'wb') as f:
+        pickle.dump(sub_db_infos, f)
+
 if __name__ == "__main__":
 
     kitti_root = "/root/Dataset/kitti/"
